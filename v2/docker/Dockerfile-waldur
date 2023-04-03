@@ -1,0 +1,50 @@
+#################
+# Build Step
+#################
+
+FROM alpine:latest as build
+
+RUN apk add --no-cache busybox-static gettext wget
+
+#################
+# Run Step
+#################
+
+FROM glauth/glauth as run
+
+# Standard binaries
+COPY --from=build /bin/busybox.static /bin/diff
+COPY --from=build /bin/busybox.static /bin/mv
+COPY --from=build /bin/busybox.static /bin/cat
+COPY --from=build /bin/busybox.static /bin/ls
+COPY --from=build /bin/busybox.static /bin/cat
+COPY --from=build /bin/busybox.static /bin/rm
+COPY --from=build /bin/busybox.static /bin/grep
+COPY --from=build /bin/busybox.static /bin/sleep
+COPY --from=build /bin/touch /bin/touch
+# Busybox's wget is limited, using the standard one
+COPY --from=build /usr/bin/wget /bin/wget
+COPY --from=build /usr/lib/* /lib/
+COPY --from=build /lib/libz.so.1 /lib/libz.so.1
+# envsubst
+COPY --from=build /usr/bin/envsubst /bin/envsubst
+# Required by envsubst
+COPY --from=build /lib/ld-musl-x86_64.so.1 /lib/ld-musl-x86_64.so.1
+COPY --from=build /usr/bin/xxd /usr/bin/xxd
+
+COPY assets/custom-preconfig-standalone.cfg.template /app/docker/preconfig.cfg.template
+
+COPY assets/refresh-glauth-config.sh /app/docker/refresh-glauth-config.sh
+COPY assets/start-standalone-custom.sh /app/docker/start-standalone-custom.sh
+
+ENV WALDUR_URL="changeme"
+ENV WALDUR_TOKEN="changeme"
+ENV WALDUR_OFFERING_UUID="changeme"
+ENV LDAP_ADMIN_USERNAME="serviceuser"
+ENV LDAP_ADMIN_PASSWORD="passw0rd"
+ENV LDAP_ADMIN_UIDNUMBER="5003"
+ENV LDAP_ADMIN_EMAIL="serviceuser@example.com"
+ENV LDAP_ADMIN_PGROUP="5502"
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["/bin/sh", "/app/docker/start-standalone-custom.sh"]
