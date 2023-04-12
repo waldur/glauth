@@ -13,14 +13,14 @@ RUN apk add --no-cache busybox-static gettext wget
 FROM glauth/glauth as run
 
 # Standard binaries
-COPY --from=build /bin/busybox.static /bin/diff
-COPY --from=build /bin/busybox.static /bin/mv
-COPY --from=build /bin/busybox.static /bin/cat
-COPY --from=build /bin/busybox.static /bin/ls
-COPY --from=build /bin/busybox.static /bin/cat
-COPY --from=build /bin/busybox.static /bin/rm
-COPY --from=build /bin/busybox.static /bin/grep
-COPY --from=build /bin/busybox.static /bin/sleep
+COPY --from=build /bin/busybox.static /bin/busybox.static
+RUN busybox.static ln -s /bin/busybox.static /bin/mv \
+    && busybox.static ln -s /bin/busybox.static /bin/ls \
+    && busybox.static ln -s /bin/busybox.static /bin/cat \
+    && busybox.static ln -s /bin/busybox.static /bin/rm \
+    && busybox.static ln -s /bin/busybox.static /bin/grep \
+    && busybox.static ln -s /bin/busybox.static /bin/sleep \
+    && busybox.static ln -s /bin/busybox.static /bin/vi
 COPY --from=build /bin/touch /bin/touch
 # Busybox's wget is limited, using the standard one
 COPY --from=build /usr/bin/wget /bin/wget
