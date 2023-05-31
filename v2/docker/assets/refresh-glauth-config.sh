@@ -4,8 +4,15 @@ set -e
 # WALDUR_URL
 # WALDUR_TOKEN
 # WALDUR_OFFERING_UUID
+# WALDUR_API_VERIFY_TLS
 # LDAP_ADMIN_USERNAME
 # LDAP_ADMIN_PASSWORD
+
+VERIFY_TLS="${WALDUR_API_VERIFY_TLS:-false}"
+
+if [ $VERIFY_TLS = "false" ]; then
+  export NO_CHECK_CERTIFICATE="--no-check-certificate"
+fi
 
 while true; do
   # Clean up the log file from the previous run
@@ -18,7 +25,8 @@ while true; do
   echo "[+] Fetching users config file"
   # Creating an empty file to handle a case when a response is empty
   touch /tmp/offering-users-config.cfg
-  wget --no-check-certificate --header="Authorization: Token $WALDUR_TOKEN" \
+
+  wget $NO_CHECK_CERTIFICATE --header="Authorization: Token $WALDUR_TOKEN" \
     ${WALDUR_URL}marketplace-provider-offerings/$WALDUR_OFFERING_UUID/glauth_users_config/ \
     -O /tmp/offering-users-config.cfg
 
