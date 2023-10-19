@@ -1,0 +1,9 @@
+[Unit]
+Description=Glauth service
+
+[Service]
+User=root
+Group=root
+ExecStart=/usr/bin/glauth -c /etc/glauth/config.cfg
+StandardOutput=append:/var/log/glauth.log
+StandardError=append:/var/log/glauth-error.log
