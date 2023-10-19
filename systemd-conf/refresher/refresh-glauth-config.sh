@@ -17,10 +17,6 @@ if [ $VERIFY_TLS = "false" ]; then
 fi
 
 while true; do
-  # Clean up the log file from the previous run
-  if [ -f /var/log/refresh-glauth-config.log ]; then
-    echo "" > /var/log/refresh-glauth-config.log
-  fi
 
   export | grep -Ei "waldur|ldap" | grep -Evi "token|password"
 
@@ -47,14 +43,14 @@ while true; do
     export LDAP_ADMIN_PASSWORD_DIGEST=$(echo -n "$LDAP_ADMIN_PASSWORD" | openssl dgst -sha256 -binary | xxd -p -c 256)
 
     echo "[+] Templating preconfig file"
-    envsubst < /app/docker/preconfig.cfg.template > /app/docker/preconfig.cfg
+    envsubst < /etc/glauth/preconfig.cfg.template > /etc/glauth/preconfig.cfg
 
-    echo "[+] Merging preconfig file with users config one"
-    cat /app/docker/preconfig.cfg /tmp/offering-users-config.cfg > /app/config/config.cfg
+    echo "[+] Merging preconfig with users config"
+    cat /etc/glauth/preconfig.cfg /tmp/offering-users-config.cfg > /etc/glauth/config.cfg
 
     echo "[+] Cleanup"
     mv /tmp/offering-users-config.cfg /tmp/prev-offering-users-config.cfg
-    rm /app/docker/preconfig.cfg
+    rm /etc/glauth/preconfig.cfg
   fi
   sleep 300 # sleep for 5 minutes
 done
