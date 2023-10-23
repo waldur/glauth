@@ -17,3 +17,18 @@ Publish docker image with specific version:
     - cd v2/docker
     - docker build . -f Dockerfile-waldur -t opennode/$CI_PROJECT_NAME:$COMMIT_TAG
     - docker push opennode/$CI_PROJECT_NAME:$COMMIT_TAG
+
+Publish docs:
+  stage: deploy
+  interruptible: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+  script:
+    - cd /tmp/
+    - git clone "https://gitlab-ci-token:$GITLAB_TOKEN@$CI_SERVER_HOST/waldur/waldur-docs.git"
+    - git config --global user.name "$GITLAB_USER_NAME"
+    - git config --global user.email "$GITLAB_USER_EMAIL"
+    - cp -v $CI_PROJECT_DIR/systemd-instructions.md /tmp/waldur-docs/docs/integrations/glauth/
+    - git commit -m "Add systemd-instructions" || exit 0
+    - git branch new-glauth-systemd-instructions
+    - git push --set-upstream origin new-glauth-systemd-instructions:master
