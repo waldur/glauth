@@ -4,25 +4,32 @@
 
 FROM alpine:latest as build
 
-RUN apk add --no-cache busybox-static gettext wget
+RUN apk add --no-cache git make busybox-static dumb-init gettext wget
 
 #################
 # Run Step
 #################
 
-FROM glauth/glauth as run
+FROM gcr.io/distroless/base-debian11 as run
 
-# Standard binaries
+# Just what we need
+COPY --from=build /usr/bin/dumb-init /usr/bin/dumb-init
 COPY --from=build /bin/busybox.static /bin/busybox.static
+COPY --from=build /bin/busybox.static /bin/sh
+
 RUN busybox.static ln -s /bin/busybox.static /bin/mv \
+    && busybox.static ln -s /bin/busybox.static /bin/mkdir \
+    && busybox.static ln -s /bin/busybox.static /bin/cp \
+    && busybox.static ln -s /bin/busybox.static /bin/rm \
     && busybox.static ln -s /bin/busybox.static /bin/ls \
     && busybox.static ln -s /bin/busybox.static /bin/cat \
-    && busybox.static ln -s /bin/busybox.static /bin/rm \
     && busybox.static ln -s /bin/busybox.static /bin/grep \
     && busybox.static ln -s /bin/busybox.static /bin/sleep \
     && busybox.static ln -s /bin/busybox.static /bin/vi \
     && busybox.static ln -s /bin/busybox.static /bin/diff \
-    && busybox.static ln -s /bin/busybox.static /bin/awk
+    && busybox.static ln -s /bin/busybox.static /bin/awk \
+    && busybox.static ln -s /bin/busybox.static /bin/touch
+
 COPY --from=build /bin/touch /bin/touch
 # Busybox's wget is limited, using the standard one
 COPY --from=build /usr/bin/wget /bin/wget
@@ -34,10 +41,16 @@ COPY --from=build /usr/bin/envsubst /bin/envsubst
 COPY --from=build /lib/ld-musl-x86_64.so.1 /lib/ld-musl-x86_64.so.1
 COPY --from=build /usr/bin/xxd /usr/bin/xxd
 
+# Copy docker specific scripts from build container
 COPY assets/custom-preconfig-standalone.cfg.template /app/docker/preconfig.cfg.template
 
 COPY assets/refresh-glauth-config.sh /app/docker/refresh-glauth-config.sh
 COPY assets/start-standalone-custom.sh /app/docker/start-standalone-custom.sh
+COPY assets/linux/amd64/glauth /app/glauth
+
+
+# Expose web and LDAP ports
+EXPOSE 389 636 5555
 
 ENV WALDUR_URL="changeme"
 ENV WALDUR_TOKEN="changeme"
