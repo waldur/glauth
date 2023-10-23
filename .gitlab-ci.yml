@@ -20,6 +20,9 @@ Publish docker image with specific version:
 
 Publish docs:
   stage: deploy
+  image:
+    name: registry.hpc.ut.ee/mirror/alpine/git:v2.30.2
+    entrypoint: [""]
   interruptible: true
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
