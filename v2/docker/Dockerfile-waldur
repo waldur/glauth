@@ -20,7 +20,9 @@ RUN busybox.static ln -s /bin/busybox.static /bin/mv \
     && busybox.static ln -s /bin/busybox.static /bin/rm \
     && busybox.static ln -s /bin/busybox.static /bin/grep \
     && busybox.static ln -s /bin/busybox.static /bin/sleep \
-    && busybox.static ln -s /bin/busybox.static /bin/vi
+    && busybox.static ln -s /bin/busybox.static /bin/vi \
+    && busybox.static ln -s /bin/busybox.static /bin/diff \
+    && busybox.static ln -s /bin/busybox.static /bin/awk
 COPY --from=build /bin/touch /bin/touch
 # Busybox's wget is limited, using the standard one
 COPY --from=build /usr/bin/wget /bin/wget

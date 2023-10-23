@@ -24,10 +24,18 @@ while true; do
   # Creating an empty file to handle a case when a response is empty
   touch /tmp/offering-users-config.cfg
 
-  wget $NO_CHECK_CERTIFICATE --header="Authorization: Token $WALDUR_TOKEN" \
+  STATUS_CODE=$(wget $NO_CHECK_CERTIFICATE --header="Authorization: Token $WALDUR_TOKEN" \
     ${WALDUR_URL}marketplace-provider-offerings/$WALDUR_OFFERING_UUID/glauth_users_config/ \
-    -O /tmp/offering-users-config.cfg
+    -O /tmp/response.txt --server-response)
 
+  if [ $STATUS_CODE != 200 ]; then
+    echo "Error during config file fetch:"
+    echo "Status code: $STATUS_CODE"
+    cat /tmp/response.txt
+    continue
+  fi
+
+  mv /tmp/response.txt /tmp/offering-users-config.cfg
   DIFF=true
   if [ -f /tmp/prev-offering-users-config.cfg ]; then
     echo "[+] Executing diff with previous users config file"
