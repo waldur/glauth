@@ -13,7 +13,7 @@ Publish latest docker image:
     - cp -f bin/linuxamd64/glauth docker/assets/linux/amd64/glauth
   script:
     - echo "$WALDUR_DOCKER_HUB_PASSWORD" | docker login -u "$WALDUR_DOCKER_HUB_USER" --password-stdin
-    - cd v2/docker
+    - cd ${CI_PROJECT_DIR}/v2/docker
     - docker build . -f Dockerfile-waldur -t opennode/$CI_PROJECT_NAME
     - docker push opennode/$CI_PROJECT_NAME:latest
 
