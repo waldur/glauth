@@ -33,6 +33,7 @@ Publish docs:
     - git config --global user.email "$GITLAB_USER_EMAIL"
     - cp -v $CI_PROJECT_DIR/systemd-instructions.md /tmp/waldur-docs/docs/integrations/glauth/
     - cd /tmp/waldur-docs/
+    - git add docs/integrations/glauth/
     - git commit -m "Add systemd-instructions" || exit 0
     - git branch new-glauth-systemd-instructions
     - git push --set-upstream origin new-glauth-systemd-instructions:master
