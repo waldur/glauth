@@ -4,7 +4,11 @@
 
 FROM alpine:latest as build
 
-RUN apk add --no-cache git make busybox-static dumb-init gettext wget
+COPY v2/ /tmp/v2
+
+RUN apk add --no-cache git make busybox-static dumb-init gettext wget go
+
+RUN ls -l /tmp && cd /tmp/v2 && make linuxamd64
 
 #################
 # Run Step
@@ -13,6 +17,7 @@ RUN apk add --no-cache git make busybox-static dumb-init gettext wget
 FROM gcr.io/distroless/base-debian11 as run
 
 # Just what we need
+COPY --from=build /tmp/v2/bin/linuxamd64/glauth /app/glauth
 COPY --from=build /usr/bin/dumb-init /usr/bin/dumb-init
 COPY --from=build /bin/busybox.static /bin/busybox.static
 COPY --from=build /bin/busybox.static /bin/sh
@@ -42,12 +47,10 @@ COPY --from=build /lib/ld-musl-x86_64.so.1 /lib/ld-musl-x86_64.so.1
 COPY --from=build /usr/bin/xxd /usr/bin/xxd
 
 # Copy docker specific scripts from build container
-COPY assets/custom-preconfig-standalone.cfg.template /app/docker/preconfig.cfg.template
+COPY v2/docker/assets/custom-preconfig-standalone.cfg.template /app/docker/preconfig.cfg.template
 
-COPY assets/refresh-glauth-config.sh /app/docker/refresh-glauth-config.sh
-COPY assets/start-standalone-custom.sh /app/docker/start-standalone-custom.sh
-COPY assets/linux/amd64/glauth /app/glauth
-
+COPY v2/docker/assets/refresh-glauth-config.sh /app/docker/refresh-glauth-config.sh
+COPY v2/docker/assets/start-standalone-custom.sh /app/docker/start-standalone-custom.sh
 
 # Expose web and LDAP ports
 EXPOSE 389 636 5555

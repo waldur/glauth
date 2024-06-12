@@ -5,12 +5,6 @@ include:
     file: "/templates/release/publish.yml"
 
 Publish latest docker image:
-  before_script:
-    - cd v2/
-    - apk add --no-cache git make go
-    - make linuxamd64
-    - mkdir -p docker/assets/linux/amd64 docker/assets/linux/arm64
-    - cp -f bin/linuxamd64/glauth docker/assets/linux/amd64/glauth
   script:
     - AUTH=$(echo -n "${WALDUR_DOCKER_HUB_USER}:${WALDUR_DOCKER_HUB_PASSWORD}" | base64)
     - |
@@ -24,7 +18,7 @@ Publish latest docker image:
       }
       EOF
     - /kaniko/executor
-      --context "${CI_PROJECT_DIR}/v2/docker"
+      --context "${CI_PROJECT_DIR}"
       --dockerfile "${CI_PROJECT_DIR}/v2/docker/Dockerfile-waldur"
       --cache=true
       --build-arg="DOCKER_REGISTRY=${DOCKER_REGISTRY}"
@@ -44,7 +38,7 @@ Publish docker image with specific version:
       }
       EOF
     - /kaniko/executor
-      --context "${CI_PROJECT_DIR}/v2/docker"
+      --context "${CI_PROJECT_DIR}"
       --dockerfile "${CI_PROJECT_DIR}/v2/docker/Dockerfile-waldur"
       --cache=true
       --build-arg="DOCKER_REGISTRY=${DOCKER_REGISTRY}"
