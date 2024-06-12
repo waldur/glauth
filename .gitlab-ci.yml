@@ -12,17 +12,43 @@ Publish latest docker image:
     - mkdir -p docker/assets/linux/amd64 docker/assets/linux/arm64
     - cp -f bin/linuxamd64/glauth docker/assets/linux/amd64/glauth
   script:
-    - echo "$WALDUR_DOCKER_HUB_PASSWORD" | docker login -u "$WALDUR_DOCKER_HUB_USER" --password-stdin
-    - cd ${CI_PROJECT_DIR}/v2/docker
-    - docker build . -f Dockerfile-waldur -t opennode/$CI_PROJECT_NAME
-    - docker push opennode/$CI_PROJECT_NAME:latest
+    - AUTH=$(echo -n "${WALDUR_DOCKER_HUB_USER}:${WALDUR_DOCKER_HUB_PASSWORD}" | base64)
+    - |
+      cat << EOF > /kaniko/.docker/config.json
+      {
+        "auths": {
+          "https://index.docker.io/v1/": {
+            "auth": "${AUTH}"
+          }
+        }
+      }
+      EOF
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}/v2/docker"
+      --dockerfile "${CI_PROJECT_DIR}/v2/docker/Dockerfile-waldur"
+      --cache=true
+      --build-arg="DOCKER_REGISTRY=${DOCKER_REGISTRY}"
+      --destination "opennode/${CI_PROJECT_NAME}:latest"
 
 Publish docker image with specific version:
   script:
-    - echo "$WALDUR_DOCKER_HUB_PASSWORD" | docker login -u "$WALDUR_DOCKER_HUB_USER" --password-stdin
-    - cd v2/docker
-    - docker build . -f Dockerfile-waldur -t opennode/$CI_PROJECT_NAME:$COMMIT_TAG
-    - docker push opennode/$CI_PROJECT_NAME:$COMMIT_TAG
+    - AUTH=$(echo -n "${WALDUR_DOCKER_HUB_USER}:${WALDUR_DOCKER_HUB_PASSWORD}" | base64)
+    - |
+      cat << EOF > /kaniko/.docker/config.json
+      {
+        "auths": {
+          "https://index.docker.io/v1/": {
+            "auth": "${AUTH}"
+          }
+        }
+      }
+      EOF
+    - /kaniko/executor
+      --context "${CI_PROJECT_DIR}/v2/docker"
+      --dockerfile "${CI_PROJECT_DIR}/v2/docker/Dockerfile-waldur"
+      --cache=true
+      --build-arg="DOCKER_REGISTRY=${DOCKER_REGISTRY}"
+      --destination "opennode/${CI_PROJECT_NAME}:${CI_COMMIT_TAG}"
 
 Publish docs:
   stage: deploy
