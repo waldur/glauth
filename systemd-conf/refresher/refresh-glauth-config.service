@@ -8,3 +8,6 @@ ExecStart=/usr/sbin/refresh-glauth-config.sh
 EnvironmentFile=/etc/glauth/refresher.env
 StandardOutput=append:/var/log/refresh-glauth-config.log
 StandardError=append:/var/log/refresh-glauth-config-error.log
+
+[Install]
+WantedBy=multi-user.target
