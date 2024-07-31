@@ -16,6 +16,8 @@ if [ $VERIFY_TLS = "false" ]; then
   export NO_CHECK_CERTIFICATE="--no-check-certificate"
 fi
 
+REFRESH_PERIOD=300 # sleep for 5 minutes
+
 while true; do
 
   export | grep -Ei "waldur|ldap" | grep -Evi "token|password"
@@ -24,16 +26,15 @@ while true; do
   # Creating an empty file to handle a case when a response is empty
   touch /tmp/offering-users-config.cfg
 
-  STATUS_CODE=$(wget $NO_CHECK_CERTIFICATE --header="Authorization: Token $WALDUR_TOKEN" \
-    ${WALDUR_URL}marketplace-provider-offerings/$WALDUR_OFFERING_UUID/glauth_users_config/ \
-    -O /tmp/response.txt --server-response)
-
-  if [ $STATUS_CODE != 200 ]; then
+  wget $NO_CHECK_CERTIFICATE --header="Authorization: Token $WALDUR_TOKEN" \
+    "${WALDUR_URL}marketplace-provider-offerings/$WALDUR_OFFERING_UUID/glauth_users_config/" \
+    -O /tmp/response.txt --server-response || \
+  {
     echo "Error during config file fetch:"
-    echo "Status code: $STATUS_CODE"
     cat /tmp/response.txt
+    sleep "$REFRESH_PERIOD"
     continue
-  fi
+  }
 
   mv /tmp/response.txt /tmp/offering-users-config.cfg
   DIFF=true
@@ -60,5 +61,5 @@ while true; do
     mv /tmp/offering-users-config.cfg /tmp/prev-offering-users-config.cfg
     rm /etc/glauth/preconfig.cfg
   fi
-  sleep 300 # sleep for 5 minutes
+  sleep "$REFRESH_PERIOD"
 done
