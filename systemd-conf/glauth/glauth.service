@@ -7,3 +7,6 @@ Group=root
 ExecStart=/usr/bin/glauth -c /etc/glauth/config.cfg
 StandardOutput=append:/var/log/glauth.log
 StandardError=append:/var/log/glauth-error.log
+
+[Install]
+WantedBy=multi-user.target
