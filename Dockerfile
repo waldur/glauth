@@ -4,8 +4,10 @@
 
 # GLAuth upstream release tag, the single place to bump the version.
 ARG GLAUTH_VERSION=GLAuth-v2.5.0
+# CI passes registry.hpc.ut.ee/mirror/ to pull base images through the mirror
+ARG DOCKER_REGISTRY=docker.io/
 
-FROM alpine:3.21 AS fetch
+FROM ${DOCKER_REGISTRY}alpine:3.21 AS fetch
 
 ARG GLAUTH_VERSION
 
