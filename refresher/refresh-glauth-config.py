@@ -19,6 +19,7 @@ Environment Variables Required:
 Optional Environment Variables:
     GLAUTH_TEMPLATE_PATH      (defaults to /etc/glauth/preconfig.cfg.template)
     GLAUTH_OUTPUT_CONFIG_PATH (defaults to /etc/glauth/config.cfg)
+    GLAUTH_REFRESH_PERIOD     (periodic refresh interval in seconds, defaults to 300)
     WALDUR_STOMP_WS_HOST      (defaults to host from WALDUR_URL)
     WALDUR_STOMP_WS_PORT      (defaults to 443)
     WALDUR_STOMP_WS_PATH      (defaults to /rmqws-stomp)
@@ -73,7 +74,8 @@ from waldur_api_client.models.observable_object_type_enum import ObservableObjec
 TEMPLATE_PATH = os.environ.get("GLAUTH_TEMPLATE_PATH", "/etc/glauth/preconfig.cfg.template")
 OUTPUT_CONFIG_PATH = os.environ.get("GLAUTH_OUTPUT_CONFIG_PATH", "/etc/glauth/config.cfg")
 AGENT_VERSION = "1.0.0"
-REFRESH_PERIOD = 300  # periodic config refresh every 5 minutes
+# Periodic config refresh interval in seconds (fallback for missed events)
+REFRESH_PERIOD = int(os.environ.get("GLAUTH_REFRESH_PERIOD", "300"))
 
 SENSITIVE_KEYS = {"WALDUR_TOKEN", "LDAP_ADMIN_PASSWORD"}
 
