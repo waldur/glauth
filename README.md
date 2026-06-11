@@ -5,10 +5,11 @@ a lightweight LDAP server. This repository does **not** fork or modify GLAuth â€
 it consumes official upstream release binaries at a pinned version and adds
 the Waldur integration around them:
 
-- a **config refresher** that periodically fetches the users config for a
-  marketplace offering from the Waldur API and merges it with a local
-  preconfig template into the GLAuth config (GLAuth hot-reloads it via
-  `watchconfig`),
+- a **config refresher** that fetches the users config for a marketplace
+  offering from the Waldur API and merges it with a local preconfig template
+  into the GLAuth config (GLAuth hot-reloads it via `watchconfig`). It
+  subscribes to `offering_user` events via STOMP-over-WebSocket so changes
+  propagate immediately, with a periodic refresh as a fallback,
 - a **Docker image** (`opennode/glauth`) bundling GLAuth + the refresher,
 - **systemd units** for running GLAuth + the refresher directly on a host.
 
@@ -18,8 +19,9 @@ the Waldur integration around them:
 Dockerfile                  Docker image: pinned GLAuth release + refresher
 docker/start.sh             Container entrypoint (refresher + glauth)
 refresher/
-  refresh-glauth-config.sh  The refresher loop (shared by Docker and systemd)
-  preconfig.cfg.template    GLAuth server/backend/admin preconfig (envsubst)
+  refresh-glauth-config.py  The refresher (shared by Docker and systemd)
+  requirements.txt          Python dependencies of the refresher
+  preconfig.cfg.template    GLAuth server/backend/admin preconfig (string.Template)
 systemd/
   glauth.service            GLAuth unit
   refresh-glauth-config.service
@@ -51,6 +53,9 @@ To upgrade:
 ## Configuration
 
 The refresher and GLAuth are configured via environment variables â€” see
-[systemd/refresher.env.example](systemd/refresher.env.example). The Waldur
-API endpoint used is
-`{WALDUR_URL}marketplace-provider-offerings/{WALDUR_OFFERING_UUID}/glauth_users_config/`.
+[systemd/refresher.env.example](systemd/refresher.env.example) and the
+docstring of
+[refresher/refresh-glauth-config.py](refresher/refresh-glauth-config.py).
+The users config comes from the
+`marketplace-provider-offerings/{WALDUR_OFFERING_UUID}/glauth_users_config/`
+endpoint of the Waldur API.

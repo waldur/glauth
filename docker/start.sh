@@ -8,7 +8,7 @@ echo "";
 echo "Starting script refreshing glauth config";
 echo "";
 
-/app/refresher/refresh-glauth-config.sh > /var/log/refresh-glauth-config.log 2>&1 &
+python3 /app/refresher/refresh-glauth-config.py > /var/log/refresh-glauth-config.log 2>&1 &
 
 timeout_counter=0
 until [ -f /app/config/config.cfg ] || [ $timeout_counter -eq 12 ]

@@ -39,7 +39,7 @@ watchconfig = true
   anonymousdse = true
 
   ## Configure dn format to use structures like
-  ## "uid=serviceuser,cn=svcaccts,$BASEDN" instead of "cn=serviceuser,ou=svcaccts,$BASEDN"
+  ## "uid=serviceuser,cn=svcaccts,BASEDN" instead of "cn=serviceuser,ou=svcaccts,BASEDN"
   ## to help ease migrations from other LDAP systems
   # nameformat = "uid"
   # groupformat = "cn"

@@ -4,7 +4,7 @@ Description=Glauth configuration refresher
 [Service]
 User=root
 Group=root
-ExecStart=/usr/sbin/refresh-glauth-config.sh
+ExecStart=/usr/bin/python3 /usr/sbin/refresh-glauth-config.py
 EnvironmentFile=/etc/glauth/refresher.env
 StandardOutput=append:/var/log/refresh-glauth-config.log
 StandardError=append:/var/log/refresh-glauth-config-error.log

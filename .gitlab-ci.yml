@@ -15,7 +15,7 @@ Publish docs:
     entrypoint: [""]
   interruptible: true
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
   script:
     - cd /tmp/
     - git clone "https://gitlab-ci-token:$GITLAB_TOKEN@$CI_SERVER_HOST/waldur/waldur-docs.git"

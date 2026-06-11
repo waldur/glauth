@@ -2,7 +2,12 @@
 
 Prerequisites:
 
-1. Ensure `wget`, `gettext` (for `envsubst`) and `coreutils` (for `sha256sum`) are installed on the target machine, as the refreshing script uses them;
+1. Ensure Python 3.9+ and `pip` are installed on the target machine, then install the refresher dependencies:
+
+   ```bash
+   pip3 install -r refresher/requirements.txt
+   ```
+
 2. Install the glauth binary to `/usr/bin/glauth`. Use the same version as pinned by `GLAUTH_VERSION` in the [Dockerfile](../Dockerfile), e.g.:
 
    ```bash
@@ -18,7 +23,7 @@ Copy the files from [this repository](https://github.com/waldur/glauth) to the c
 mkdir /etc/glauth
 cp refresher/preconfig.cfg.template /etc/glauth/preconfig.cfg.template
 cp systemd/refresher.env.example /etc/glauth/refresher.env
-cp refresher/refresh-glauth-config.sh /usr/sbin/refresh-glauth-config.sh
+cp refresher/refresh-glauth-config.py /usr/sbin/refresh-glauth-config.py
 cp systemd/refresh-glauth-config.service /etc/systemd/system/refresh-glauth-config.service
 ```
 
