@@ -35,7 +35,13 @@ import time
 from string import Template
 from urllib.parse import urlparse
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
+
 import stomp
+import tomli_w
 from stomp.exception import StompException
 from waldur_api_client import AuthenticatedClient
 from waldur_api_client.api.event_subscriptions import event_subscriptions_create_queue
@@ -170,13 +176,37 @@ def template_preconfig(config, password_digest):
     )
 
 
+def merge_configs(preconfig_content, users_config):
+    """Merge the rendered preconfig with the Waldur users config at the TOML
+    level.
+
+    A naive string concatenation is unsafe: the API renders ``users`` and
+    ``groups`` as top-level keys (``groups`` in particular as a leading inline
+    array), and appending that text after the preconfig's trailing ``[[groups]]``
+    table reparents those keys under that table, silently dropping every
+    Waldur-provided group. Parsing both documents and concatenating the
+    ``users``/``groups`` collections keeps the result a single coherent config.
+    """
+    base = tomllib.loads(preconfig_content)
+    extra = tomllib.loads(users_config or "")
+    for key in ("users", "groups"):
+        merged = base.get(key, []) + extra.get(key, [])
+        if merged:
+            base[key] = merged
+    # Carry over any other top-level keys the API might introduce later.
+    for key, value in extra.items():
+        if key not in ("users", "groups"):
+            base.setdefault(key, value)
+    return tomli_w.dumps(base)
+
+
 def merge_and_write_config(preconfig_content, users_config):
     logger.info(
         "Merging preconfig with users config, writing to: %s", OUTPUT_CONFIG_PATH
     )
+    merged = merge_configs(preconfig_content, users_config)
     with open(OUTPUT_CONFIG_PATH, "w") as f:
-        f.write(preconfig_content)
-        f.write(users_config)
+        f.write(merged)
 
 
 def refresh_config(config, client):
