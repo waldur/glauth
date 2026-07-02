@@ -2,3 +2,6 @@
 waldur-api-client
 stomp.py>=8.1.1
 websocket-client
+tomli-w
+# tomllib is stdlib on Python 3.11+; tomli is the read backport for older hosts
+tomli; python_version < "3.11"

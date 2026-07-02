@@ -63,3 +63,42 @@ def test_read_config_collects_env(refresher, monkeypatch):
     assert set(refresher.REQUIRED_ENV_VARS) <= set(config)
     # Optional vars are carried through when present.
     assert config["WALDUR_STOMP_WS_PORT"] == "15674"
+
+
+# The Waldur API serialises the export with tomli_w: a leading top-level inline
+# ``groups`` array followed by the ``[[users]]`` records.
+API_USERS_CONFIG = (
+    "groups = [\n"
+    '    { name = "alice", gidnumber = 8001 },\n'
+    '    { name = "8501", gidnumber = 8501 },\n'
+    "]\n\n"
+    "[[users]]\n"
+    'name = "alice"\n'
+    "uidnumber = 7001\n"
+    "primarygroup = 8001\n"
+)
+
+
+def test_merge_configs_preserves_api_groups(refresher, monkeypatch):
+    monkeypatch.setattr(refresher, "TEMPLATE_PATH", str(PRECONFIG))
+    preconfig = refresher.template_preconfig(ADMIN_ENV, "deadbeef")
+
+    merged = refresher.merge_configs(preconfig, API_USERS_CONFIG)
+    parsed = tomllib.loads(merged)
+
+    # Preconfig admin and the API user coexist in one document.
+    assert {"serviceuser", "alice"} <= {u["name"] for u in parsed["users"]}
+
+    gids = {g["gidnumber"] for g in parsed["groups"]}
+    # Admin group plus both API groups survive — in particular the standalone
+    # project group (8501), which the old text concatenation silently dropped.
+    assert {5502, 8001, 8501} <= gids
+
+
+def test_merge_configs_handles_empty_users_config(refresher, monkeypatch):
+    monkeypatch.setattr(refresher, "TEMPLATE_PATH", str(PRECONFIG))
+    preconfig = refresher.template_preconfig(ADMIN_ENV, "deadbeef")
+
+    merged = refresher.merge_configs(preconfig, "")
+    parsed = tomllib.loads(merged)
+    assert parsed["users"][0]["name"] == "serviceuser"
