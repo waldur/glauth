@@ -1,0 +1,18 @@
+[tool.ruff]
+# Never enforce `E501` (line length violations).
+lint.ignore = ["E501"]
+
+lint.select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "UP",  # pyupgrade
+  "I",   # isort
+]
+
+target-version = "py310"
+
+[tool.ruff.lint.isort]
+known-first-party = ["refresher"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
