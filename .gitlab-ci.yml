@@ -3,10 +3,38 @@ include:
     file: "/templates/stages.yml"
   - project: "waldur/waldur-pipelines"
     file: "/templates/release/publish.yml"
+  - project: "waldur/waldur-pipelines"
+    file: "/templates/test/python-linters.yml"
+  - project: "waldur/waldur-pipelines"
+    file: "/templates/test/lint-dockerfile.yaml"
 
 # Docker image publishing comes entirely from the shared publish.yml template
 # (buildah, linux/amd64, Dockerfile at the repo root, pushed as
 # opennode/${CI_PROJECT_NAME}); no overrides are needed.
+
+# Lint the refresher and config files (ruff + pre-commit hooks).
+Run linters:
+  extends: .Run linters template
+  image: registry.hpc.ut.ee/mirror/library/python:3.13-bookworm
+
+# Lint the Dockerfile with hadolint.
+Lint dockerfile:
+  extends: .Lint dockerfile template
+
+# Unit-test the refresher's pure config helpers.
+Run tests:
+  stage: test
+  interruptible: true
+  image: registry.hpc.ut.ee/mirror/library/python:3.13-bookworm
+  rules:
+    - if: '$SKIP_TESTS == "true" || $SKIP_TESTS == "yes"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  script:
+    - pip install --no-cache-dir pytest tomli-w
+    - pytest -v
 
 Publish docs:
   stage: deploy

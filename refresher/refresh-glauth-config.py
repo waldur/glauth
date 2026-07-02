@@ -35,16 +35,9 @@ import time
 from string import Template
 from urllib.parse import urlparse
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
-logger = logging.getLogger(__name__)
-
 import stomp
 from stomp.exception import StompException
 from waldur_api_client import AuthenticatedClient
-
 from waldur_api_client.api.event_subscriptions import event_subscriptions_create_queue
 from waldur_api_client.api.marketplace_provider_offerings import (
     marketplace_provider_offerings_glauth_users_config_retrieve,
@@ -53,26 +46,41 @@ from waldur_api_client.api.marketplace_site_agent_identities import (
     marketplace_site_agent_identities_create,
     marketplace_site_agent_identities_list,
     marketplace_site_agent_identities_register_event_subscription,
-    marketplace_site_agent_identities_update,
     marketplace_site_agent_identities_register_service,
+    marketplace_site_agent_identities_update,
 )
-from waldur_api_client.api.marketplace_site_agent_services import marketplace_site_agent_services_register_processor
+from waldur_api_client.api.marketplace_site_agent_services import (
+    marketplace_site_agent_services_register_processor,
+)
 from waldur_api_client.models import (
     AgentIdentity,
     AgentIdentityRequest,
     AgentProcessorCreateRequest,
     EventSubscriptionQueueCreateRequest,
-    offering,
 )
 from waldur_api_client.models.agent_event_subscription_create_request import (
     AgentEventSubscriptionCreateRequest,
 )
 from waldur_api_client.models.agent_service import AgentService
-from waldur_api_client.models.agent_service_create_request import AgentServiceCreateRequest
-from waldur_api_client.models.observable_object_type_enum import ObservableObjectTypeEnum
+from waldur_api_client.models.agent_service_create_request import (
+    AgentServiceCreateRequest,
+)
+from waldur_api_client.models.observable_object_type_enum import (
+    ObservableObjectTypeEnum,
+)
 
-TEMPLATE_PATH = os.environ.get("GLAUTH_TEMPLATE_PATH", "/etc/glauth/preconfig.cfg.template")
-OUTPUT_CONFIG_PATH = os.environ.get("GLAUTH_OUTPUT_CONFIG_PATH", "/etc/glauth/config.cfg")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+TEMPLATE_PATH = os.environ.get(
+    "GLAUTH_TEMPLATE_PATH", "/etc/glauth/preconfig.cfg.template"
+)
+OUTPUT_CONFIG_PATH = os.environ.get(
+    "GLAUTH_OUTPUT_CONFIG_PATH", "/etc/glauth/config.cfg"
+)
 AGENT_VERSION = "1.0.0"
 # Periodic config refresh interval in seconds (fallback for missed events)
 REFRESH_PERIOD = int(os.environ.get("GLAUTH_REFRESH_PERIOD", "300"))
@@ -163,7 +171,9 @@ def template_preconfig(config, password_digest):
 
 
 def merge_and_write_config(preconfig_content, users_config):
-    logger.info("Merging preconfig with users config, writing to: %s", OUTPUT_CONFIG_PATH)
+    logger.info(
+        "Merging preconfig with users config, writing to: %s", OUTPUT_CONFIG_PATH
+    )
     with open(OUTPUT_CONFIG_PATH, "w") as f:
         f.write(preconfig_content)
         f.write(users_config)
@@ -205,6 +215,7 @@ def register_agent_identity(client, offering_uuid):
     logger.info("Created new identity: %s", identity.uuid.hex)
     return identity
 
+
 def register_event_subscription(client, identity):
     """Register event subscription for offering_user events."""
     logger.info("Registering event subscription for offering_user")
@@ -212,8 +223,10 @@ def register_event_subscription(client, identity):
         observable_object_type=ObservableObjectTypeEnum.OFFERING_USER,
         description=f"GLAuth config refresher for identity {identity.name}",
     )
-    event_subscription = marketplace_site_agent_identities_register_event_subscription.sync(
-        uuid=identity.uuid.hex, body=body, client=client
+    event_subscription = (
+        marketplace_site_agent_identities_register_event_subscription.sync(
+            uuid=identity.uuid.hex, body=body, client=client
+        )
     )
     logger.info("Registered event subscription: %s", event_subscription.uuid.hex)
     return event_subscription
@@ -232,6 +245,7 @@ def create_event_subscription_queue(client, event_subscription, offering_uuid):
     logger.info("Event subscription queue created")
     return queue
 
+
 def register_agent_service(client, agent_identity: AgentIdentity):
     logger.info("Registering agent service")
     body = AgentServiceCreateRequest(
@@ -246,7 +260,10 @@ def register_agent_service(client, agent_identity: AgentIdentity):
     logger.info("Agent service %s registered with UUID: %s", service.name, service.uuid)
     return service
 
-def register_agent_processor(client, agent_service: AgentService, name="glauth-sync-processor"):
+
+def register_agent_processor(
+    client, agent_service: AgentService, name="glauth-sync-processor"
+):
     logger.info("Registering agent processor")
     body = AgentProcessorCreateRequest(
         name=name,
@@ -258,8 +275,11 @@ def register_agent_processor(client, agent_service: AgentService, name="glauth-s
         body=body,
         client=client,
     )
-    logger.info("Agent processor %s registered with UUID: %s", processor.name, processor.uuid)
+    logger.info(
+        "Agent processor %s registered with UUID: %s", processor.name, processor.uuid
+    )
     return processor
+
 
 def connect_to_stomp(connection, username, password):
     """Connect to STOMP server with retry logic."""
@@ -276,7 +296,9 @@ def connect_to_stomp(connection, username, password):
                 },
             )
         except StompException as e:
-            logger.error("Failed to connect to STOMP server, retrying in 10 seconds: %s", e)
+            logger.error(
+                "Failed to connect to STOMP server, retrying in 10 seconds: %s", e
+            )
             time.sleep(10)
 
 
@@ -322,7 +344,9 @@ def main():
     # Register agent identity and event subscription
     identity = register_agent_identity(client, offering_uuid)
     event_subscription = register_event_subscription(client, identity)
-    event_subscription_queue = create_event_subscription_queue(client, event_subscription, offering_uuid)
+    event_subscription_queue = create_event_subscription_queue(
+        client, event_subscription, offering_uuid
+    )
     queue_name = event_subscription_queue.queue_name
     service = register_agent_service(client, identity)
     register_agent_processor(client, service, "initial-glauth-sync-processor")
@@ -332,7 +356,9 @@ def main():
     refresh_config(config, client)
 
     # Set up STOMP connection
-    stomp_host = config.get("WALDUR_STOMP_WS_HOST") or urlparse(config["WALDUR_URL"]).hostname
+    stomp_host = (
+        config.get("WALDUR_STOMP_WS_HOST") or urlparse(config["WALDUR_URL"]).hostname
+    )
     stomp_port = int(config.get("WALDUR_STOMP_WS_PORT", 443))
     ws_path = config.get("WALDUR_STOMP_WS_PATH", "/rmqws-stomp")
     use_tls = config.get("WALDUR_WEBSOCKET_USE_TLS", "true").lower() != "false"
@@ -341,7 +367,9 @@ def main():
     username = event_subscription.uuid.hex
     password = config["WALDUR_TOKEN"]
 
-    logger.info("Setting up STOMP connection to %s:%s%s", stomp_host, stomp_port, ws_path)
+    logger.info(
+        "Setting up STOMP connection to %s:%s%s", stomp_host, stomp_port, ws_path
+    )
     connection = stomp.WSStompConnection(
         host_and_ports=[(stomp_host, stomp_port)],
         ws_path=ws_path,
@@ -352,7 +380,9 @@ def main():
 
     connection.set_listener(
         "glauth-listener",
-        GlauthConfigListener(connection, queue_name, username, password, config, client, offering_uuid),
+        GlauthConfigListener(
+            connection, queue_name, username, password, config, client, offering_uuid
+        ),
     )
 
     connect_to_stomp(connection, username, password)
