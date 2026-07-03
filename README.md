@@ -5,11 +5,13 @@ a lightweight LDAP server. This repository does **not** fork or modify GLAuth â€
 it consumes official upstream release binaries at a pinned version and adds
 the Waldur integration around them:
 
-- a **config refresher** that fetches the users config for a marketplace
-  offering from the Waldur API and merges it with a local preconfig template
-  into the GLAuth config (GLAuth hot-reloads it via `watchconfig`). It
-  subscribes to `offering_user` events via STOMP-over-WebSocket so changes
-  propagate immediately, with a periodic refresh as a fallback,
+- a **config refresher** that fetches the users config for one or more
+  marketplace offerings from the Waldur API and merges it with a local
+  preconfig template into the GLAuth config (GLAuth hot-reloads it via
+  `watchconfig`). It subscribes to `offering_user` events via
+  STOMP-over-WebSocket so changes propagate immediately, with a periodic
+  refresh as a fallback. A single instance can serve several offerings at once
+  by setting `WALDUR_OFFERING_UUID` to a comma-separated list,
 - a **Docker image** (`opennode/glauth`) bundling GLAuth + the refresher,
 - **systemd units** for running GLAuth + the refresher directly on a host.
 
@@ -58,4 +60,9 @@ docstring of
 [refresher/refresh-glauth-config.py](refresher/refresh-glauth-config.py).
 The users config comes from the
 `marketplace-provider-offerings/{WALDUR_OFFERING_UUID}/glauth_users_config/`
-endpoint of the Waldur API.
+endpoint of the Waldur API. `WALDUR_OFFERING_UUID` may be a single offering
+UUID or a comma-separated list; the exports of all listed offerings are merged
+into one directory. Because each offering allocates its uid/gid ranges
+independently, the operator must keep those ranges from overlapping â€” on a
+uid/gid/name collision the first offering wins and the colliding record is
+skipped with a warning.
