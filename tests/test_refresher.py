@@ -102,3 +102,61 @@ def test_merge_configs_handles_empty_users_config(refresher, monkeypatch):
     merged = refresher.merge_configs(preconfig, "")
     parsed = tomllib.loads(merged)
     assert parsed["users"][0]["name"] == "serviceuser"
+
+
+# A second offering's export, with a non-overlapping uid/gid range.
+API_USERS_CONFIG_2 = (
+    "groups = [\n"
+    '    { name = "bob", gidnumber = 9002 },\n'
+    "]\n\n"
+    "[[users]]\n"
+    'name = "bob"\n'
+    "uidnumber = 9002\n"
+    "primarygroup = 9002\n"
+)
+
+
+def test_parse_offering_uuids_single(refresher):
+    assert refresher.parse_offering_uuids({"WALDUR_OFFERING_UUID": "abc123"}) == [
+        "abc123"
+    ]
+
+
+def test_parse_offering_uuids_list_trims_and_dedupes(refresher):
+    result = refresher.parse_offering_uuids({"WALDUR_OFFERING_UUID": " a , b ,, a ,c "})
+    # Whitespace stripped, empty entries dropped, duplicates collapsed, order kept.
+    assert result == ["a", "b", "c"]
+
+
+def test_parse_offering_uuids_empty_exits(refresher):
+    with pytest.raises(SystemExit):
+        refresher.parse_offering_uuids({"WALDUR_OFFERING_UUID": " , "})
+
+
+def test_merge_configs_multiple_offerings(refresher, monkeypatch):
+    monkeypatch.setattr(refresher, "TEMPLATE_PATH", str(PRECONFIG))
+    preconfig = refresher.template_preconfig(ADMIN_ENV, "deadbeef")
+
+    merged = refresher.merge_configs(preconfig, [API_USERS_CONFIG, API_USERS_CONFIG_2])
+    parsed = tomllib.loads(merged)
+
+    # Users from both offerings plus the admin coexist in one directory.
+    assert {"serviceuser", "alice", "bob"} <= {u["name"] for u in parsed["users"]}
+    gids = {g["gidnumber"] for g in parsed["groups"]}
+    assert {5502, 8001, 8501, 9002} <= gids
+
+
+def test_merge_configs_skips_colliding_offerings(refresher, monkeypatch, caplog):
+    monkeypatch.setattr(refresher, "TEMPLATE_PATH", str(PRECONFIG))
+    preconfig = refresher.template_preconfig(ADMIN_ENV, "deadbeef")
+
+    # Feeding the same offering export twice collides on every uid/gid/name;
+    # the second copy must be skipped rather than producing duplicate records.
+    merged = refresher.merge_configs(preconfig, [API_USERS_CONFIG, API_USERS_CONFIG])
+    parsed = tomllib.loads(merged)
+
+    alice_records = [u for u in parsed["users"] if u["name"] == "alice"]
+    assert len(alice_records) == 1
+    gid_8001 = [g for g in parsed["groups"] if g["gidnumber"] == 8001]
+    assert len(gid_8001) == 1
+    assert any("collision" in message.lower() for message in caplog.messages)

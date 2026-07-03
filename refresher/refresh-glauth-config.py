@@ -5,10 +5,16 @@ Subscribes to offering_user events from Waldur via STOMP-over-WebSocket
 and refreshes the GLAuth config file whenever a change is detected.
 Also performs an initial config fetch on startup.
 
+A single GLAuth instance can expose the offering users of several offerings
+at once: set WALDUR_OFFERING_UUID to a comma-separated list of offering UUIDs.
+Their exports are merged into one directory; on a uid/gid/name collision the
+first occurrence wins and the rest are skipped with a warning, so operators
+must keep the per-offering uid/gid ranges from overlapping.
+
 Environment Variables Required:
     WALDUR_URL
     WALDUR_TOKEN
-    WALDUR_OFFERING_UUID
+    WALDUR_OFFERING_UUID     (single UUID, or a comma-separated list of UUIDs)
     WALDUR_API_VERIFY_TLS
     LDAP_ADMIN_USERNAME
     LDAP_ADMIN_PASSWORD
@@ -139,6 +145,26 @@ def log_env_vars(config):
         logger.info("  %s=%s", key, config[key])
 
 
+def parse_offering_uuids(config):
+    """Parse WALDUR_OFFERING_UUID into a list of offering UUIDs.
+
+    Accepts a single UUID or a comma-separated list, so one GLAuth instance can
+    expose the offering users of several offerings at once. Surrounding
+    whitespace is ignored and empty entries are dropped. Duplicate UUIDs are
+    collapsed while preserving order, so a repeated offering is fetched once.
+    """
+    raw = config["WALDUR_OFFERING_UUID"]
+    uuids = []
+    for entry in raw.split(","):
+        uuid = entry.strip()
+        if uuid and uuid not in uuids:
+            uuids.append(uuid)
+    if not uuids:
+        logger.error("WALDUR_OFFERING_UUID does not contain any offering UUID")
+        sys.exit(1)
+    return uuids
+
+
 def get_waldur_client(config):
     verify_ssl = config["WALDUR_API_VERIFY_TLS"].lower() != "false"
     return AuthenticatedClient(
@@ -176,46 +202,118 @@ def template_preconfig(config, password_digest):
     )
 
 
-def merge_configs(preconfig_content, users_config):
-    """Merge the rendered preconfig with the Waldur users config at the TOML
-    level.
+def combine_users_configs(users_configs):
+    """Combine one or more Waldur users configs into a single users/groups set.
+
+    Each offering is exported independently, so two offerings can hand out the
+    same uidnumber, gidnumber or account name. GLAuth needs each of those to be
+    unique across the directory, so on a collision the first occurrence wins and
+    the rest are skipped with a warning. Operators are expected to stagger the
+    per-offering ``initial_uidnumber``/``initial_primarygroup_number`` ranges so
+    collisions do not happen in practice.
+
+    Returns a dict with the merged ``users`` and ``groups`` lists plus any other
+    top-level keys the API might introduce later (first occurrence wins).
+    """
+    users = []
+    groups = []
+    extras = {}
+    seen_uidnumbers = set()
+    seen_usernames = set()
+    seen_gidnumbers = set()
+    seen_groupnames = set()
+    collisions = 0
+
+    for users_config in users_configs:
+        parsed = tomllib.loads(users_config or "")
+        for group in parsed.get("groups", []):
+            gid, name = group.get("gidnumber"), group.get("name")
+            if gid in seen_gidnumbers or name in seen_groupnames:
+                collisions += 1
+                logger.warning(
+                    "Skipping duplicate group name=%s gidnumber=%s "
+                    "(already provided by an earlier offering)",
+                    name,
+                    gid,
+                )
+                continue
+            seen_gidnumbers.add(gid)
+            seen_groupnames.add(name)
+            groups.append(group)
+        for user in parsed.get("users", []):
+            uid, name = user.get("uidnumber"), user.get("name")
+            if uid in seen_uidnumbers or name in seen_usernames:
+                collisions += 1
+                logger.warning(
+                    "Skipping duplicate user name=%s uidnumber=%s "
+                    "(already provided by an earlier offering)",
+                    name,
+                    uid,
+                )
+                continue
+            seen_uidnumbers.add(uid)
+            seen_usernames.add(name)
+            users.append(user)
+        for key, value in parsed.items():
+            if key not in ("users", "groups"):
+                extras.setdefault(key, value)
+
+    if collisions:
+        logger.warning(
+            "Merged %d offering config(s) with %d collision(s) skipped; "
+            "check that the per-offering uid/gid ranges do not overlap",
+            len(users_configs),
+            collisions,
+        )
+    return {"users": users, "groups": groups, "extras": extras}
+
+
+def merge_configs(preconfig_content, users_configs):
+    """Merge the rendered preconfig with one or more Waldur users configs at the
+    TOML level.
+
+    ``users_configs`` may be a single config string (one offering) or a list of
+    config strings (several offerings merged into one GLAuth instance).
 
     A naive string concatenation is unsafe: the API renders ``users`` and
     ``groups`` as top-level keys (``groups`` in particular as a leading inline
     array), and appending that text after the preconfig's trailing ``[[groups]]``
     table reparents those keys under that table, silently dropping every
-    Waldur-provided group. Parsing both documents and concatenating the
+    Waldur-provided group. Parsing every document and concatenating the
     ``users``/``groups`` collections keeps the result a single coherent config.
     """
+    if isinstance(users_configs, str):
+        users_configs = [users_configs]
     base = tomllib.loads(preconfig_content)
-    extra = tomllib.loads(users_config or "")
+    combined = combine_users_configs(users_configs)
     for key in ("users", "groups"):
-        merged = base.get(key, []) + extra.get(key, [])
+        merged = base.get(key, []) + combined[key]
         if merged:
             base[key] = merged
-    # Carry over any other top-level keys the API might introduce later.
-    for key, value in extra.items():
-        if key not in ("users", "groups"):
-            base.setdefault(key, value)
+    for key, value in combined["extras"].items():
+        base.setdefault(key, value)
     return tomli_w.dumps(base)
 
 
-def merge_and_write_config(preconfig_content, users_config):
+def merge_and_write_config(preconfig_content, users_configs):
     logger.info(
         "Merging preconfig with users config, writing to: %s", OUTPUT_CONFIG_PATH
     )
-    merged = merge_configs(preconfig_content, users_config)
+    merged = merge_configs(preconfig_content, users_configs)
     with open(OUTPUT_CONFIG_PATH, "w") as f:
         f.write(merged)
 
 
-def refresh_config(config, client):
-    """Fetch GLAuth config from API and write merged config file."""
+def refresh_config(config, client, offering_uuids):
+    """Fetch the GLAuth config for every offering and write the merged file."""
     try:
-        users_config = fetch_glauth_config(client, config["WALDUR_OFFERING_UUID"])
+        users_configs = [
+            fetch_glauth_config(client, offering_uuid)
+            for offering_uuid in offering_uuids
+        ]
         password_digest = generate_password_digest(config["LDAP_ADMIN_PASSWORD"])
         preconfig_content = template_preconfig(config, password_digest)
-        merge_and_write_config(preconfig_content, users_config)
+        merge_and_write_config(preconfig_content, users_configs)
         logger.info("Config refreshed successfully")
     except Exception as e:
         logger.exception("Error refreshing config: %s", e)
@@ -332,29 +430,40 @@ def connect_to_stomp(connection, username, password):
             time.sleep(10)
 
 
+def reregister_agents(client, offering_uuids):
+    """Refresh the agent identity/service/processor liveness for every offering."""
+    for offering_uuid in offering_uuids:
+        identity = register_agent_identity(client, offering_uuid)
+        service = register_agent_service(client, identity)
+        register_agent_processor(client, service)
+
+
 class GlauthConfigListener(stomp.ConnectionListener):
     """STOMP listener that triggers GLAuth config refresh on offering_user events."""
 
-    def __init__(self, conn, queue, username, password, config, client, offering_uuid):
+    def __init__(
+        self, conn, queues, username, password, config, client, offering_uuids
+    ):
         self.conn = conn
-        self.queue = queue
+        self.queues = queues
         self.username = username
         self.password = password
         self.config = config
         self.client = client
-        self.offering_uuid = offering_uuid
+        self.offering_uuids = offering_uuids
 
     def on_connected(self, frame):
-        destination = f"/amq/queue/{self.queue}"
-        self.conn.subscribe(destination=destination, id=self.queue, ack="auto")
-        logger.info("Subscribed to %s", destination)
+        # One queue per offering; subscribe to all so an event for any of the
+        # exposed offerings triggers a refresh of the merged config.
+        for queue in self.queues:
+            destination = f"/amq/queue/{queue}"
+            self.conn.subscribe(destination=destination, id=queue, ack="auto")
+            logger.info("Subscribed to %s", destination)
 
     def on_message(self, frame):
         logger.info("Received offering_user event: %s", frame.body)
-        identity = register_agent_identity(self.client, self.offering_uuid)
-        service = register_agent_service(self.client, identity)
-        register_agent_processor(self.client, service)
-        refresh_config(self.config, self.client)
+        reregister_agents(self.client, self.offering_uuids)
+        refresh_config(self.config, self.client, self.offering_uuids)
 
     def on_error(self, frame):
         logger.error("STOMP error: %s", frame.body)
@@ -369,21 +478,34 @@ def main():
     log_env_vars(config)
 
     client = get_waldur_client(config).__enter__()
-    offering_uuid = config["WALDUR_OFFERING_UUID"]
-
-    # Register agent identity and event subscription
-    identity = register_agent_identity(client, offering_uuid)
-    event_subscription = register_event_subscription(client, identity)
-    event_subscription_queue = create_event_subscription_queue(
-        client, event_subscription, offering_uuid
+    offering_uuids = parse_offering_uuids(config)
+    logger.info(
+        "Exposing offering users from %d offering(s): %s",
+        len(offering_uuids),
+        ", ".join(offering_uuids),
     )
-    queue_name = event_subscription_queue.queue_name
-    service = register_agent_service(client, identity)
-    register_agent_processor(client, service, "initial-glauth-sync-processor")
+
+    # Register an agent identity per offering. The event subscription is
+    # per-user (deduplicated by Waldur), so it is registered once; a separate
+    # RabbitMQ queue is created per offering and bound to that subscription.
+    identities = [
+        register_agent_identity(client, offering_uuid)
+        for offering_uuid in offering_uuids
+    ]
+    event_subscription = register_event_subscription(client, identities[0])
+    queue_names = [
+        create_event_subscription_queue(
+            client, event_subscription, offering_uuid
+        ).queue_name
+        for offering_uuid in offering_uuids
+    ]
+    for identity in identities:
+        service = register_agent_service(client, identity)
+        register_agent_processor(client, service, "initial-glauth-sync-processor")
 
     # Initial config fetch
     logger.info("Performing initial config fetch")
-    refresh_config(config, client)
+    refresh_config(config, client, offering_uuids)
 
     # Set up STOMP connection
     stomp_host = (
@@ -411,7 +533,13 @@ def main():
     connection.set_listener(
         "glauth-listener",
         GlauthConfigListener(
-            connection, queue_name, username, password, config, client, offering_uuid
+            connection,
+            queue_names,
+            username,
+            password,
+            config,
+            client,
+            offering_uuids,
         ),
     )
 
@@ -422,7 +550,7 @@ def main():
         while True:
             time.sleep(REFRESH_PERIOD)
             logger.info("Periodic config refresh")
-            refresh_config(config, client)
+            refresh_config(config, client, offering_uuids)
     except KeyboardInterrupt:
         logger.info("Shutting down...")
         connection.disconnect()
