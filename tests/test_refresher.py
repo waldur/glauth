@@ -4,6 +4,7 @@ import hashlib
 import pathlib
 
 import pytest
+import tomli_w
 
 try:
     import tomllib
@@ -160,3 +161,109 @@ def test_merge_configs_skips_colliding_offerings(refresher, monkeypatch, caplog)
     gid_8001 = [g for g in parsed["groups"] if g["gidnumber"] == 8001]
     assert len(gid_8001) == 1
     assert any("collision" in message.lower() for message in caplog.messages)
+
+
+# A realistic single-offering users config as produced by the Waldur
+# ``glauth_users_config`` action: two team members who share a resource-scope
+# role group (``hpc-cluster_admin``, gid 60000) and a resource-project-scope
+# role group (``hpc-cluster_a1b2c3d4_member``, gid 60001), each with a distinct
+# uid and personal group, plus a legacy project-mapped group (gid 6001). Built
+# with ``tomli_w`` — the exact serializer the API uses — so the on-the-wire
+# format (``[[users]]`` / ``[[groups]]`` array-of-tables, nested
+# customattributes) matches production rather than a hand-written approximation.
+def _mastermind_users_config():
+    def member(name, uidnumber, primarygroup):
+        return {
+            "name": name,
+            "givenname": name.capitalize(),
+            "sn": "Example",
+            "mail": f"{name}@example.com",
+            "uidnumber": uidnumber,
+            "primarygroup": primarygroup,
+            "otherGroups": [6001, 60000, 60001],
+            "sshkeys": [],
+            "loginShell": "/bin/bash",
+            "homeDir": f"/home/{name}",
+            "passsha256": "",
+            "disabled": False,
+            "customattributes": {"preferredUsername": [name]},
+        }
+
+    return tomli_w.dumps(
+        {
+            "users": [
+                member("alice", 1001, 2001),
+                member("bob", 1002, 2002),
+            ],
+            "groups": [
+                {"name": "alice", "gidnumber": 2001},
+                {"name": "bob", "gidnumber": 2002},
+                {"name": "6001", "gidnumber": 6001},
+                {"name": "hpc-cluster_admin", "gidnumber": 60000},
+                {"name": "hpc-cluster_a1b2c3d4_member", "gidnumber": 60001},
+            ],
+        }
+    )
+
+
+MASTERMIND_USERS_CONFIG = _mastermind_users_config()
+
+
+def _render(refresher, monkeypatch):
+    """Run the full refresh pipeline (template + merge) and return parsed TOML."""
+    monkeypatch.setattr(refresher, "TEMPLATE_PATH", str(PRECONFIG))
+    preconfig = refresher.template_preconfig(ADMIN_ENV, "deadbeef")
+    merged = refresher.merge_configs(preconfig, MASTERMIND_USERS_CONFIG)
+    return tomllib.loads(merged)
+
+
+def test_member_uid_and_primary_group_survive_merge(refresher, monkeypatch):
+    """Each team member's uid and personal group reach the rendered config
+    unchanged, and stay distinct per user."""
+    users = {u["name"]: u for u in _render(refresher, monkeypatch)["users"]}
+    assert users["alice"]["uidnumber"] == 1001
+    assert users["alice"]["primarygroup"] == 2001
+    assert users["bob"]["uidnumber"] == 1002
+    assert users["bob"]["primarygroup"] == 2002
+    assert users["alice"]["uidnumber"] != users["bob"]["uidnumber"]
+    assert users["alice"]["primarygroup"] != users["bob"]["primarygroup"]
+    # The templated admin account coexists untouched.
+    assert users["serviceuser"]["uidnumber"] == 5003
+
+
+def test_role_group_gids_survive_merge(refresher, monkeypatch):
+    """Personal, project and both role groups reach the config with their
+    gidnumbers intact — including the standalone role groups a naive text
+    concatenation would drop."""
+    gids = {
+        g["name"]: g["gidnumber"] for g in _render(refresher, monkeypatch)["groups"]
+    }
+    assert gids["alice"] == 2001
+    assert gids["bob"] == 2002
+    assert gids["6001"] == 6001
+    assert gids["hpc-cluster_admin"] == 60000
+    assert gids["hpc-cluster_a1b2c3d4_member"] == 60001
+    # The preconfig admin group survives alongside the API groups.
+    assert 5502 in gids.values()
+
+
+def test_member_othergroups_resolve_to_real_groups(refresher, monkeypatch):
+    """ldapsearch-shaped invariant: every gid in a member's otherGroups resolves
+    to a group that exists in the merged config, and both members carry the two
+    shared role-group gids."""
+    parsed = _render(refresher, monkeypatch)
+    group_gids = {g["gidnumber"] for g in parsed["groups"]}
+    users = {u["name"]: u for u in parsed["users"]}
+    for name in ("alice", "bob"):
+        for gid in users[name]["otherGroups"]:
+            assert gid in group_gids, f"{name} otherGroups gid {gid} has no group"
+        assert {60000, 60001}.issubset(set(users[name]["otherGroups"]))
+
+
+def test_shared_role_gids_are_identical_across_members(refresher, monkeypatch):
+    """The role groups are keyed per (offering, scope, role), so both members
+    must reference the very same role-group gids, not per-user copies."""
+    users = {u["name"]: u for u in _render(refresher, monkeypatch)["users"]}
+    alice_role_gids = {g for g in users["alice"]["otherGroups"] if g >= 60000}
+    bob_role_gids = {g for g in users["bob"]["otherGroups"] if g >= 60000}
+    assert alice_role_gids == bob_role_gids == {60000, 60001}
